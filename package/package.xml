@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <!-- Apex -->
+  <types>
+    <members>*</members>
+    <name>ApexClass</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>ApexComponent</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>ApexPage</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>ApexTrigger</name>
+  </types>
+
+  <!-- Customizations -->
+  <types>
+    <members>*</members>
+    <name>CustomObject</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>CustomField</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>ValidationRule</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>WorkflowRule</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>WorkflowFieldUpdate</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>WorkflowAlert</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>WorkflowTask</name>
+  </types>
+
+  <!-- Automation -->
+  <types>
+    <members>*</members>
+    <name>Flow</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>FlowDefinition</name>
+  </types>
+  
+
+  <!-- Layouts and Tabs -->
+  <types>
+    <members>*</members>
+    <name>Layout</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>CustomTab</name>
+  </types>
+
+  <!-- Profiles and Permission Sets -->
+  <types>
+    <members>*</members>
+    <name>Profile</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>PermissionSet</name>
+  </types>
+
+  <!-- Objects and Metadata Config -->
+  <types>
+    <members>*</members>
+    <name>RecordType</name>
+  </types>
+  
+  <types>
+    <members>*</members>
+    <name>CustomApplication</name>
+  </types>
+
+  <!-- Lightning Components -->
+  <types>
+    <members>*</members>
+    <name>LightningComponentBundle</name>
+  </types>
+
+  <!-- LWC and Aura -->
+  <types>
+    <members>*</members>
+    <name>AuraDefinitionBundle</name>
+  </types>
+
+  <!-- Static Resources -->
+  <types>
+    <members>*</members>
+    <name>StaticResource</name>
+  </types>
+
+  <!-- Email Templates -->
+  <types>
+    <members>*</members>
+    <name>EmailTemplate</name>
+  </types>
+
+  <!-- Reports and Dashboards -->
+  <types>
+    <members>*</members>
+    <name>Report</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>Dashboard</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>ReportType</name>
+  </types>
+
+  <!-- Remote Site Settings & Named Credentials -->
+  <types>
+    <members>*</members>
+    <name>RemoteSiteSetting</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>NamedCredential</name>
+  </types>
+
+  <!-- Custom Metadata & Settings -->
+  <types>
+    <members>*</members>
+    <name>CustomMetadata</name>
+  </types>
+
+  <!-- PermissionSetGroup, Labels, Translations -->
+  <types>
+    <members>*</members>
+    <name>PermissionSetGroup</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>Translations</name>
+  </types>
+  <types>
+    <members>*</members>
+    <name>CustomLabels</name>
+  </types>
+
+
+  <version>59.0</version> 
+</Package>
