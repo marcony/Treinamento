@@ -48,16 +48,6 @@
     <name>WorkflowTask</name>
   </types>
 
-  <!-- Automation -->
-  <types>
-    <members>*</members>
-    <name>Flow</name>
-  </types>
-  <types>
-    <members>*</members>
-    <name>FlowDefinition</name>
-  </types>
-  
 
   <!-- Layouts and Tabs -->
   <types>
@@ -112,20 +102,6 @@
   <types>
     <members>*</members>
     <name>EmailTemplate</name>
-  </types>
-
-  <!-- Reports and Dashboards -->
-  <types>
-    <members>*</members>
-    <name>Report</name>
-  </types>
-  <types>
-    <members>*</members>
-    <name>Dashboard</name>
-  </types>
-  <types>
-    <members>*</members>
-    <name>ReportType</name>
   </types>
 
   <!-- Remote Site Settings & Named Credentials -->
