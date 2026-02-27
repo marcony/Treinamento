@@ -1,8 +1,7 @@
 trigger AccountTrigger on Account (before insert, before update, after insert, after update) {
     
     if (Trigger.isBefore) {
-        // Lógica antes do insert/update (ex: validações futuras)
-        // Exemplo: AccountRepository.validarCpfCnpjEmLote(Trigger.new);
+        AccountRepository.validarCpfCnpjEmLote(Trigger.new);
     }
 
     if (Trigger.isAfter) {

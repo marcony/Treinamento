@@ -1,12 +1,16 @@
 public class AccountRepository {    
+    private static final String TYPE_PF = 'PF';
+    private static final String TYPE_PJ = 'PJ';
+
     public static void addAccount(Account conta) {
-        if (!validarCpfCnpj(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
+        if (!validarCpfCnpjByRecordTypeId(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
             throw new AuraHandledException('CPF ou CNPJ inválido para o tipo de conta informado.');
-        }insert conta;    
+        }
+        insert conta;    
     }    
     
     public static void updateAccount(Account conta) {
-        if (!validarCpfCnpj(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
+        if (!validarCpfCnpjByRecordTypeId(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
             throw new AuraHandledException('CPF ou CNPJ inválido para o tipo de conta informado.');
         }
         update conta; 
@@ -21,9 +25,9 @@ public class AccountRepository {
     }    
     
     public static void excuirAccountById(Id contaId) {
-        Account conta = getAccountById(contaId);
-        if (conta != null) {    
-            delete conta;
+        List<Account> contas = [SELECT Id FROM Account WHERE Id = :contaId LIMIT 1];
+        if (!contas.isEmpty()) {    
+            delete contas[0];
         }    
     }   
 
@@ -35,14 +39,14 @@ public class AccountRepository {
                 recordTypeIds.add(acc.RecordTypeId);
             }
         }
-        // Busca os RecordTypes e cria um mapa Id -> Name
+        // Busca os RecordTypes e cria um mapa Id -> DeveloperName
         Map<Id, RecordType> rtMap = new Map<Id, RecordType>(
-            [SELECT Id, Name FROM RecordType WHERE Id IN :recordTypeIds AND SObjectType = 'Account']
+            [SELECT Id, DeveloperName FROM RecordType WHERE Id IN :recordTypeIds AND SObjectType = 'Account']
         );
         for (Account acc : contas) {
             String tipo = '';
             if (acc.RecordTypeId != null && rtMap.containsKey(acc.RecordTypeId)) {
-                tipo = rtMap.get(acc.RecordTypeId).Name; // ou .DeveloperName se preferir
+                tipo = rtMap.get(acc.RecordTypeId).DeveloperName;
             }
             if (!validarCpfCnpj(tipo, acc.CPF_CNPJ__c)) {
                 acc.CPF_CNPJ__c.addError('CPF ou CNPJ inválido para o tipo de conta informado.');
@@ -50,12 +54,37 @@ public class AccountRepository {
         }
     }
     
+    @TestVisible
+    private static Boolean validarCpfCnpjByRecordTypeId(Id recordTypeId, String documento) {
+        String tipo = getTipoByRecordTypeId(recordTypeId);
+        return validarCpfCnpj(tipo, documento);
+    }
+
+    @TestVisible
+    private static String getTipoByRecordTypeId(Id recordTypeId) {
+        if (recordTypeId == null) {
+            return '';
+        }
+
+        Schema.RecordTypeInfo rtInfo = Account.SObjectType.getDescribe().getRecordTypeInfosById().get(recordTypeId);
+        if (rtInfo == null) {
+            return '';
+        }
+        return rtInfo.getDeveloperName();
+    }
+
+    @TestVisible
+    private static String normalizeTipo(String tipo) {
+        return String.isBlank(tipo) ? '' : tipo.trim().toUpperCase();
+    }
     
+    @TestVisible
     private static Boolean validarCpfCnpj(String tipo, String documento) {
         String clean = documento != null ? documento.replaceAll('[^0-9]', '') : '';
-        if (tipo == 'PF') {    
+        String tipoNormalizado = normalizeTipo(tipo);
+        if (tipoNormalizado == TYPE_PF) {    
             return isValidCPF(clean);
-        } else if (tipo == 'PJ') {    
+        } else if (tipoNormalizado == TYPE_PJ) {    
             return isValidCNPJ(clean);
         }return false;    
     }    
