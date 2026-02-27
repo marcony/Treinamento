@@ -1,0 +1,46 @@
+<apex:component controller="AccountEmailComponentController" access="global">
+    <apex:attribute name="recordId" type="Id" description="ID da Account" assignTo="{!accountId}" />
+
+    <div style="font-family: Arial, sans-serif; margin: 20px;">
+        <h1 style="color:#2c3e50;">Account Report - {!account.Name}</h1>
+
+        <p><strong>Account Owner:</strong> {!account.Owner.Name}</p>
+        <p><strong>Rating:</strong> {!account.Rating}</p>
+        <p><strong>Phone:</strong> {!account.Phone}</p>
+        <p><strong>Fax:</strong> {!account.Fax}</p>
+        <p><strong>Account Number:</strong> {!account.AccountNumber}</p>
+        <p><strong>Website:</strong> {!account.Website}</p>
+        <p><strong>Ticker Symbol:</strong> {!account.TickerSymbol}</p>
+        <p><strong>Type:</strong> {!account.Type}</p>
+        <p><strong>Ownership:</strong> {!account.Ownership}</p>
+        <p><strong>Industry:</strong> {!account.Industry}</p>
+        <p><strong>Employees:</strong> {!account.NumberOfEmployees}</p>
+        <p><strong>Annual Revenue:</strong> {!account.AnnualRevenue}</p>
+        <p><strong>SIC Code:</strong> {!account.Sic}</p>
+        <p><strong>CPF/CNPJ:</strong> {!account.CPF_CNPJ__c}</p>
+
+        <h3>Billing Address</h3>
+        <p>
+            {!account.BillingStreet}<br/>
+            {!account.BillingCity} - {!account.BillingState}<br/>
+            {!account.BillingPostalCode}<br/>
+            {!account.BillingCountry}
+        </p>
+
+        <h3>Shipping Address</h3>
+        <p>
+            {!account.ShippingStreet}<br/>
+            {!account.ShippingCity} - {!account.ShippingState}<br/>
+            {!account.ShippingPostalCode}<br/>
+            {!account.ShippingCountry}
+        </p>
+
+        <p><strong>Customer Priority:</strong> {!account.CustomerPriority__c}</p>
+        <p><strong>SLA:</strong> {!account.SLA__c}</p>
+        <p><strong>SLA Expiration Date:</strong> {!account.SLAExpirationDate__c}</p>
+        <p><strong>SLA Serial Number:</strong> {!account.SLASerialNumber__c}</p>
+        <p><strong>Number of Locations:</strong> {!account.NumberofLocations__c}</p>
+        <p><strong>Upsell Opportunity:</strong> {!account.UpsellOpportunity__c}</p>
+        <p><strong>Active:</strong> {!account.Active__c}</p>
+    </div>
+</apex:component>

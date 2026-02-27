@@ -1,23 +1,23 @@
 public class AccountRepository {    
     public static void addAccount(Account conta) {
-        if (!validarCpfCnpj(conta.Tipo__c, conta.CpfCnpj__c)) {    
+        if (!validarCpfCnpj(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
             throw new AuraHandledException('CPF ou CNPJ inválido para o tipo de conta informado.');
         }insert conta;    
     }    
     
     public static void updateAccount(Account conta) {
-        if (!validarCpfCnpj(conta.Tipo__c, conta.CpfCnpj__c)) {    
+        if (!validarCpfCnpj(conta.RecordTypeId, conta.CPF_CNPJ__c)) {    
             throw new AuraHandledException('CPF ou CNPJ inválido para o tipo de conta informado.');
         }
         update conta; 
     }    
     
     public static Account getAccountById(Id contaId) {
-        return [SELECT Id, Tipo__c, CpfCnpj__c FROM Account WHERE Id = :contaId LIMIT 1];    
+        return [SELECT Id, RecordTypeId, CPF_CNPJ__c FROM Account WHERE Id = :contaId LIMIT 1];    
     }    
 
     public static List<Account> listAll() {
-        return [SELECT Id, Tipo__c, CpfCnpj__c FROM Account];    
+        return [SELECT Id, RecordTypeId, CPF_CNPJ__c FROM Account];    
     }    
     
     public static void excuirAccountById(Id contaId) {
@@ -26,6 +26,29 @@ public class AccountRepository {
             delete conta;
         }    
     }   
+
+    public static void validarCpfCnpjEmLote(List<Account> contas) {
+        // Coleta todos os RecordTypeIds presentes nos registros
+        Set<Id> recordTypeIds = new Set<Id>();
+        for (Account acc : contas) {
+            if (acc.RecordTypeId != null) {
+                recordTypeIds.add(acc.RecordTypeId);
+            }
+        }
+        // Busca os RecordTypes e cria um mapa Id -> Name
+        Map<Id, RecordType> rtMap = new Map<Id, RecordType>(
+            [SELECT Id, Name FROM RecordType WHERE Id IN :recordTypeIds AND SObjectType = 'Account']
+        );
+        for (Account acc : contas) {
+            String tipo = '';
+            if (acc.RecordTypeId != null && rtMap.containsKey(acc.RecordTypeId)) {
+                tipo = rtMap.get(acc.RecordTypeId).Name; // ou .DeveloperName se preferir
+            }
+            if (!validarCpfCnpj(tipo, acc.CPF_CNPJ__c)) {
+                acc.CPF_CNPJ__c.addError('CPF ou CNPJ inválido para o tipo de conta informado.');
+            }
+        }
+    }
     
     
     private static Boolean validarCpfCnpj(String tipo, String documento) {
@@ -38,43 +61,47 @@ public class AccountRepository {
     }    
 
     private static Boolean isValidCPF(String cpf) {
-        if (String.isBlank(cpf) || cpf.length() != 11) return false;
-    
-        // Verifica se todos os dígitos são iguais
-        Boolean todosIguais = true;
+        // Verifica formato básico
+        if (String.isBlank(cpf) || cpf.length() != 11 || !cpf.isNumeric()) { // Checa se é numérico
+            return false;
+        }
+        
+        // Verifica dígitos repetidos (ex.: 000.000.000-00)
+        Boolean allSame = true;
         for (Integer i = 1; i < cpf.length(); i++) {
-            if (cpf.substring(i, i+1) != cpf.substring(0, 1)) {
-                todosIguais = false;
+            if (cpf.mid(i, 1) != cpf.mid(0, 1)) {
+                allSame = false;
                 break;
             }
         }
-        if (todosIguais) return false;
-    
+        if (allSame) return false;
+        
+        // Cálculo do primeiro dígito verificador
         Integer sum = 0;
-        for (Integer i = 0; i < 9; i++) {     
-            sum += Integer.valueOf(cpf.substring(i, i+1)) * (10 - i);
+        for (Integer i = 0; i < 9; i++) {
+            sum += Integer.valueOf(cpf.mid(i, 1)) * (10 - i); 
         }
-    
-        Integer firstDigit = (sum * 10) % 11;
-        if (firstDigit == 10) firstDigit = 0;
-    
-        if (firstDigit != Integer.valueOf(cpf.substring(9, 10))) return false;
-    
+        Integer firstDigit = Math.mod((sum * 10), 11);
+        firstDigit = (firstDigit == 10) ? 0 : firstDigit;
+        if (firstDigit != Integer.valueOf(cpf.mid(9, 1))) {
+            return false;
+        }
+        
+        // Cálculo do segundo dígito verificador
         sum = 0;
-        for (Integer i = 0; i < 10; i++) {    
-            sum += Integer.valueOf(cpf.substring(i, i+1)) * (11 - i);
+        for (Integer i = 0; i < 10; i++) {
+            sum += Integer.valueOf(cpf.mid(i, 1)) * (11 - i);
         }
-    
-        Integer secondDigit = (sum * 10) % 11;
-        if (secondDigit == 10) secondDigit = 0;
-    
-        return secondDigit == Integer.valueOf(cpf.substring(10));
+        Integer secondDigit = Math.mod((sum * 10), 11);
+        secondDigit = (secondDigit == 10) ? 0 : secondDigit;
+        
+        return secondDigit == Integer.valueOf(cpf.mid(10, 1));
     }
 
 
     private static Boolean isValidCNPJ(String cnpj) {
         if (String.isBlank(cnpj) || cnpj.length() != 14) return false;
-    
+
         // Verifica se todos os dígitos são iguais
         Boolean todosIguais = true;
         for (Integer i = 1; i < cnpj.length(); i++) {
@@ -84,31 +111,40 @@ public class AccountRepository {
             }
         }
         if (todosIguais) return false;
-    
+
         Integer[] weights1 = new Integer[]{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2};
         Integer[] weights2 = new Integer[]{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2};
-    
+
         Integer sum = 0;
-        for (Integer i = 0; i < 12; i++) {    
-            sum += Integer.valueOf(cnpj.substring(i, i+1)) * weights1[i];
+        try {
+            for (Integer i = 0; i < 12; i++) {    
+                sum += Integer.valueOf(cnpj.substring(i, i+1)) * weights1[i];
+            }
+        } catch (Exception e) {
+            return false; // Caso haja algum caractere não numérico
         }
-    
-        Integer firstDigit = sum % 11;
+
+        Integer firstDigit = Math.mod(sum, 11); 
         firstDigit = (firstDigit < 2) ? 0 : 11 - firstDigit;
-    
+
         if (firstDigit != Integer.valueOf(cnpj.substring(12, 13))) return false;
-    
+
         sum = 0;
-        for (Integer i = 0; i < 13; i++) {    
-            sum += Integer.valueOf(cnpj.substring(i, i+1)) * weights2[i];
+        try {
+            for (Integer i = 0; i < 13; i++) {    
+                sum += Integer.valueOf(cnpj.substring(i, i+1)) * weights2[i];
+            }
+        } catch (Exception e) {
+            return false;
         }
-    
-        Integer secondDigit = sum % 11;
+
+        Integer secondDigit = Math.mod(sum, 11); 
         secondDigit = (secondDigit < 2) ? 0 : 11 - secondDigit;
-    
-        return secondDigit == Integer.valueOf(cnpj.substring(13));
+
+        // substring(13, 14) pega apenas o último dígito
+        return secondDigit == Integer.valueOf(cnpj.substring(13, 14));
     }
-        
+            
 
 
 
