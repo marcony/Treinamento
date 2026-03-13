@@ -11,8 +11,9 @@ private class ToolingLogServiceTest {
 
         public HttpResponse respond(HttpRequest req) {
             System.assertEquals('GET', req.getMethod());
-            System.assert(req.getEndpoint().contains('/services/data/v63.0/tooling/sobjects/ApexLog/'));
-            System.assert(req.getEndpoint().endsWith('/Body/'));
+            System.assert(req.getEndpoint().contains('/services/data/v63.0/'));
+            System.assert(req.getEndpoint().contains('/sobjects/ApexLog/'));
+            System.assert(req.getEndpoint().endsWith('/Body'));
 
             HttpResponse res = new HttpResponse();
             res.setStatusCode(statusCode);
@@ -27,16 +28,26 @@ private class ToolingLogServiceTest {
         public List<ApexLog> fetch(Integer limitSize) {
             lastLimit = limitSize;
             return new List<ApexLog>{
-                new ApexLog(
-                    Id = '07L000000000001AAA',
-                    Operation = 'AnonymousBlock',
-                    Status = 'Success',
-                    DurationMilliseconds = 120,
-                    LogLength = 2450,
-                    StartTime = System.now()
-                )
+                buildApexLog('07L000000000001AAA', 'AnonymousBlock', 'Success', 120, 2450)
             };
         }
+    }
+
+    private static ApexLog buildApexLog(
+        String idValue,
+        String operation,
+        String status,
+        Integer durationMs,
+        Integer logLength
+    ) {
+        String payload = '{"attributes":{"type":"ApexLog"},'
+            + '"Id":"' + idValue + '",'
+            + '"Operation":"' + operation + '",'
+            + '"Status":"' + status + '",'
+            + '"DurationMilliseconds":' + durationMs + ','
+            + '"LogLength":' + logLength
+            + '}';
+        return (ApexLog) JSON.deserialize(payload, ApexLog.class);
     }
 
     @IsTest
@@ -111,7 +122,7 @@ private class ToolingLogServiceTest {
             ToolingLogService.getBody(logId, 200000);
             System.assert(false, 'Era esperado erro de autorizacao.');
         } catch (AuraHandledException ex) {
-            System.assert(ex.getMessage().contains('Sessao expirada'));
+            System.assert(ex.getMessage().contains('nao autoriza leitura de log via API'));
         }
     }
 

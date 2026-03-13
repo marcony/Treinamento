@@ -52,20 +52,14 @@ public with sharing class ToolingLogService {
         validateLogId(logId);
 
         Integer safeMaxChars = (maxChars == null || maxChars <= 0) ? DEFAULT_MAX_CHARS : maxChars;
-
-        HttpRequest req = new HttpRequest();
-        req.setMethod('GET');
-        req.setTimeout(120000);
-        req.setEndpoint(buildLogBodyEndpoint(logId));
         String sessionId = UserInfo.getSessionId();
         if (String.isBlank(sessionId)) {
             throw new AuraHandledException('Sessao expirada ou sem permissao para acessar o log.');
         }
-        req.setHeader('Authorization', 'Bearer ' + sessionId);
 
         HttpResponse res;
         try {
-            res = new Http().send(req);
+            res = executeWithFallback(logId, sessionId);
         } catch (Exception ex) {
             throw new AuraHandledException('Falha ao buscar o corpo do log. Tente novamente em instantes.');
         }
@@ -75,7 +69,10 @@ public with sharing class ToolingLogService {
             return truncateToLastChars(res.getBody(), safeMaxChars);
         }
         if (statusCode == 401 || statusCode == 403) {
-            throw new AuraHandledException('Sessao expirada ou sem permissao para acessar o log.');
+            throw new AuraHandledException(
+                'Sua sessao atual nao autoriza leitura de log via API. '
+                + 'Valide a permissao API Enabled do usuario ou configure Named Credential.'
+            );
         }
         if (statusCode == 404) {
             throw new AuraHandledException('Log nao encontrado para o Id informado.');
@@ -91,7 +88,52 @@ public with sharing class ToolingLogService {
             + API_VERSION
             + '/tooling/sobjects/ApexLog/'
             + String.valueOf(logId)
-            + '/Body/';
+            + '/Body';
+    }
+
+    @TestVisible
+    private static String buildLogBodyEndpointStandard(Id logId) {
+        return URL.getOrgDomainUrl().toExternalForm()
+            + '/services/data/v'
+            + API_VERSION
+            + '/sobjects/ApexLog/'
+            + String.valueOf(logId)
+            + '/Body';
+    }
+
+    private static HttpResponse executeWithFallback(Id logId, String sessionId) {
+        List<String> endpoints = new List<String>{
+            buildLogBodyEndpoint(logId),
+            buildLogBodyEndpointStandard(logId)
+        };
+        List<String> authSchemes = new List<String>{ 'Bearer', 'OAuth' };
+
+        HttpResponse lastResponse;
+        for (String endpoint : endpoints) {
+            for (String authScheme : authSchemes) {
+                HttpResponse res = sendRequest(endpoint, authScheme, sessionId);
+                lastResponse = res;
+
+                Integer statusCode = res.getStatusCode();
+                if (statusCode == 200) {
+                    return res;
+                }
+                if (statusCode != 401 && statusCode != 403) {
+                    return res;
+                }
+            }
+        }
+
+        return lastResponse;
+    }
+
+    private static HttpResponse sendRequest(String endpoint, String authScheme, String sessionId) {
+        HttpRequest req = new HttpRequest();
+        req.setMethod('GET');
+        req.setTimeout(120000);
+        req.setEndpoint(endpoint);
+        req.setHeader('Authorization', authScheme + ' ' + sessionId);
+        return new Http().send(req);
     }
 
     @TestVisible

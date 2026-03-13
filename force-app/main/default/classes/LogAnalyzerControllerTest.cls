@@ -20,16 +20,26 @@ private class LogAnalyzerControllerTest {
     private class FakeLogProvider implements ToolingLogService.LogProvider {
         public List<ApexLog> fetch(Integer limitSize) {
             return new List<ApexLog>{
-                new ApexLog(
-                    Id = '07L000000000002AAA',
-                    Operation = 'ExecuteAnonymous',
-                    Status = 'Success',
-                    DurationMilliseconds = 80,
-                    LogLength = 980,
-                    StartTime = System.now()
-                )
+                buildApexLog('07L000000000002AAA', 'ExecuteAnonymous', 'Success', 80, 980)
             };
         }
+    }
+
+    private static ApexLog buildApexLog(
+        String idValue,
+        String operation,
+        String status,
+        Integer durationMs,
+        Integer logLength
+    ) {
+        String payload = '{"attributes":{"type":"ApexLog"},'
+            + '"Id":"' + idValue + '",'
+            + '"Operation":"' + operation + '",'
+            + '"Status":"' + status + '",'
+            + '"DurationMilliseconds":' + durationMs + ','
+            + '"LogLength":' + logLength
+            + '}';
+        return (ApexLog) JSON.deserialize(payload, ApexLog.class);
     }
 
     @IsTest

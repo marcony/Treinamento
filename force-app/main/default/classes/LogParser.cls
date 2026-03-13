@@ -171,9 +171,9 @@ public with sharing class LogParser {
 
         Integer center = (failureIndex >= 0) ? failureIndex : 0;
         Integer start = Math.max(0, center - EVIDENCE_RADIUS);
-        Integer end = Math.min(lines.size() - 1, center + EVIDENCE_RADIUS);
+        Integer endIndex = Math.min(lines.size() - 1, center + EVIDENCE_RADIUS);
 
-        for (Integer i = start; i <= end; i++) {
+        for (Integer i = start; i <= endIndex; i++) {
             evidence.add(lines[i]);
         }
 
