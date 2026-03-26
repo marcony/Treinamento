@@ -1,0 +1,638 @@
+openapi: 3.0.3
+info:
+  title: CCC-CIU RDS Integration API
+  description: |
+    API specification for the Chart Command Center (CCC) and Chart Image Uploader (CIU) 
+    migration to Salesforce with RDS handling S3 operations.
+
+    This API supports:
+    - Chart file operations (upload, download, delete, get details)
+    - External chart delivery
+    - Asynchronous job tracking via polling (summary via `/jobs/{jobId}/status`)
+    - Paginated per-item results via `/jobs/{jobId}/items`
+    - Bulk operations
+
+    ## Message Sequence Pattern
+    For large batch jobs (e.g. ~100k items), a single logical job is split across
+    multiple HTTP requests (chunks) using the **Message Sequence** pattern:
+
+    | Concept              | Field                                  | Description                                                                 |
+    |----------------------|----------------------------------------|-----------------------------------------------------------------------------|
+    | Sequence Identifier  | `jobId`                                | Groups all chunks belonging to the same logical job (existing field).       |
+    | Position Identifier  | `messageSequence.sequenceNumber`       | 1-based index that uniquely orders each chunk within the sequence.          |
+    | Size / End Indicator | `messageSequence.totalSequences`       | Total number of chunks in the sequence.                                     |
+    |                      | `messageSequence.isLast`               | `true` on the final chunk (convenience flag; equivalent to sequenceNumber == totalSequences). |
+
+    The receiver aggregates all chunks for a `jobId` and begins processing once
+    the final chunk (`isLast: true`) is received, or once all `totalSequences`
+    chunks have arrived.
+  version: 1.0.0
+  contact:
+    name: Maximo Oliveira
+    email: maximo.oliveira@optum.com
+  license:
+    name: Internal - HIPAA Compliant
+
+servers:
+  - url: https://rds-api.prod.optum.com/v1/ccc-ciu
+    description: Production RDS Environment
+  - url: https://rds-api.uat.optum.com/v1/ccc-ciu
+    description: UAT RDS Environment
+  - url: https://rds-api.dev.optum.com/v1/ccc-ciu
+    description: Development RDS Environment
+
+security:
+  - OAuth2: [read, write]
+  - ApiKeyAuth: []
+
+paths:
+  /jobs/submit:
+    post:
+      summary: Submit Chart Operation Job
+      description: |
+        Submit a batch job for chart operations (GetDetails, Upload, Delete, Download, ExternalDelivery).
+        Supports chunking for large batches and returns immediate acknowledgment with jobId for tracking.
+
+        ### Message Sequence (chunked submission)
+        For jobs with large item counts (e.g. ~100k), the caller splits the items
+        across multiple requests sharing the same `jobId`. Each request includes a
+        `messageSequence` object that carries:
+        - **sequenceNumber** – 1-based position of this chunk.
+        - **totalSequences** – total number of chunks the job is split into.
+        - **isLast** – `true` on the final chunk.
+
+        RDS aggregates all chunks for a `jobId` and begins processing once the
+        full sequence has been received.
+      operationId: submitChartJob
+      tags:
+        - Job Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartJobRequest'
+            examples:
+              delete_job:
+                summary: Delete Job
+                value:
+                  jobId: "550e8400-e29b-41d4-a716-446655440004"
+                  correlationId: "550e8400-e29b-41d4-a716-446655440005"
+                  requestedBy: "005XX000004TMlFYAW"
+                  action: "Delete"
+                  messageSequence:
+                    sequenceNumber: 1
+                    totalSequences: 1
+                    isLast: true
+                  items:
+                    - chartId: "CHART789012"
+              download_job_chunk1:
+                summary: Download Job – Chunk 1 of 3
+                value:
+                  jobId: "550e8400-e29b-41d4-a716-446655440006"
+                  correlationId: "550e8400-e29b-41d4-a716-446655440007"
+                  requestedBy: "005XX000004TMlFYAW"
+                  action: "Download"
+                  messageSequence:
+                    sequenceNumber: 1
+                    totalSequences: 3
+                    isLast: false
+                  items:
+                    - chartId: "CHART345678"
+                    - chartId: "CHART345679"
+              download_job_chunk3:
+                summary: Download Job – Chunk 3 of 3 (final)
+                value:
+                  jobId: "550e8400-e29b-41d4-a716-446655440006"
+                  correlationId: "550e8400-e29b-41d4-a716-446655440007"
+                  requestedBy: "005XX000004TMlFYAW"
+                  action: "Download"
+                  messageSequence:
+                    sequenceNumber: 3
+                    totalSequences: 3
+                    isLast: true
+                  items:
+                    - chartId: "CHART345690"
+              external_delivery_job:
+                summary: External Delivery Job 
+                value:
+                  jobId: "550e8400-e29b-41d4-a716-446655440008"
+                  correlationId: "550e8400-e29b-41d4-a716-446655440009"
+                  requestedBy: "005XX000004TMlFYAW"
+                  action: "ExternalDelivery"
+                  messageSequence:
+                    sequenceNumber: 1
+                    totalSequences: 1
+                    isLast: true
+                  deliveryConfig:
+                    clientId: "CLIENT_ACME_001"
+                    deliveryMethod: "ECG2"
+                    targetEndpoint: "https://ecg2.delivery.optum.com/intake"
+                    renamePattern: "<ClientID>_<ChartID>_<Timestamp>.pdf"
+                    deliveryMetadata:
+                      priority: "normal"
+                      notifyOnComplete: true
+                  items:
+                    - chartId: "CHART901234"
+      responses:
+        '202':
+          description: Job accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAcknowledgment'
+        '400':
+          description: Invalid request format or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jobs/{jobId}/status:
+    get:
+      summary: Get Job Status (summary)
+      description: |
+        Retrieve the current high-level status and progress summary of a submitted job.
+        Salesforce should poll this endpoint periodically to track job progress.
+
+        This endpoint returns **only aggregate counts** (`jobSummary`) and sequence
+        ingestion progress (`sequenceStatus`). It does **not** include per-item results.
+        Use `GET /jobs/{jobId}/items` for paginated item-level details.
+      operationId: getJobStatus
+      tags:
+        - Job Management
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique job identifier
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jobs/{jobId}/items:
+    get:
+      summary: Get Job Item Results (paginated)
+      description: |
+        Retrieve paginated per-item results for a submitted job.
+        Use this endpoint when you need the detailed status of individual chart items
+        (e.g. to display in a UI table or to retry failed items).
+
+        Results can be filtered by item status to quickly find failures or pending items.
+      operationId: getJobItems
+      tags:
+        - Item Results
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique job identifier
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 500
+          description: Maximum number of items to return per page
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of items to skip (for pagination)
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Pending, InProgress, Success, Failed, Skipped]
+          description: Filter items by status
+      responses:
+        '200':
+          description: Paginated item results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedItemsResponse'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ChartJobRequest:
+      type: object
+      required:
+        - jobId
+        - correlationId
+        - requestedBy
+        - action
+        - messageSequence
+        - items
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: |
+            Unique identifier for the job.
+            Acts as the **Sequence Identifier** in the Message Sequence pattern –
+            all chunked requests belonging to the same logical job share this value.
+        correlationId:
+          type: string
+          format: uuid
+          description: Correlation ID for distributed request tracking (not used for sequencing)
+        requestedBy:
+          type: string
+          description: Salesforce User ID who initiated the request
+        requestedAt:
+          type: string
+          format: date-time
+          description: Timestamp when request was made
+          default: current timestamp
+        action:
+          type: string
+          enum: [Delete, Download, ExternalDelivery]
+          description: Type of operation to perform
+        messageSequence:
+          $ref: '#/components/schemas/MessageSequence'
+        deliveryConfig:
+          $ref: '#/components/schemas/DeliveryConfig'
+          description: Delivery configuration. Required when action is ExternalDelivery.
+        items:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/BaseItem'
+          description: Array of items to process in this chunk
+
+
+    MessageSequence:
+      type: object
+      description: |
+        Implements the Message Sequence pattern for chunked job submissions.
+        The `jobId` on the parent request serves as the **Sequence Identifier**
+        that groups all chunks of the same logical job.
+      required:
+        - sequenceNumber
+        - totalSequences
+        - isLast
+      properties:
+        sequenceNumber:
+          type: integer
+          minimum: 1
+          description: |
+            **Position Identifier** – 1-based index that uniquely identifies and
+            sequentially orders this chunk within the sequence.
+          example: 1
+        totalSequences:
+          type: integer
+          minimum: 1
+          description: |
+            **Size Indicator** – Total number of chunks the job is split into.
+            The receiver knows the sequence is complete when chunks 1 through
+            totalSequences have all arrived.
+          example: 5
+        isLast:
+          type: boolean
+          description: |
+            **End Indicator** – `true` when this is the final chunk in the
+            sequence (i.e. sequenceNumber == totalSequences). Provides a
+            quick signal for the receiver to begin aggregation/processing.
+          example: false
+
+    BaseItem:
+      type: object
+      required:
+        - chartId
+      properties:
+        chartId:
+          type: string
+          description: Chart identifier
+
+    DeliveryConfig:
+      type: object
+      required:
+        - clientId
+        - deliveryMethod
+        - targetEndpoint
+      properties:
+        clientId:
+          type: string
+          description: Client identifier for delivery
+        deliveryMethod:
+          type: string
+          enum: [ECG2, FTP, API]
+          description: Method of delivery
+        targetEndpoint:
+          type: string
+          description: Target endpoint for delivery
+        renamePattern:
+          type: string
+          default: "<ClientID>_<ChartID>_<Timestamp>.pdf"
+          description: Pattern for renaming files during delivery
+        deliveryMetadata:
+          type: object
+          additionalProperties: true
+          description: Additional metadata for delivery
+
+    JobAcknowledgment:
+      type: object
+      required:
+        - jobId
+        - status
+        - acceptedAt
+        - itemsAccepted
+        - itemsRejected
+        - sequenceReceived
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Job identifier (Sequence Identifier)
+        status:
+          type: string
+          enum: [Accepted, Rejected]
+          description: Whether this chunk was accepted for processing
+        acceptedAt:
+          type: string
+          format: date-time
+          description: Timestamp when chunk was accepted
+        sequenceReceived:
+          type: object
+          description: Echo of the sequence position for this chunk, plus aggregation progress
+          required:
+            - sequenceNumber
+            - totalSequences
+            - chunksReceivedSoFar
+          properties:
+            sequenceNumber:
+              type: integer
+              minimum: 1
+              description: The sequence number of the chunk just accepted
+            totalSequences:
+              type: integer
+              minimum: 1
+              description: Total expected chunks for this job
+            chunksReceivedSoFar:
+              type: integer
+              minimum: 1
+              description: How many chunks RDS has received for this jobId so far (including this one)
+            allChunksReceived:
+              type: boolean
+              description: "`true` when all totalSequences chunks have been received and processing can begin"
+        estimatedCompletion:
+          type: string
+          format: date-time
+          description: Estimated completion time (available once all chunks received)
+        message:
+          type: string
+          description: Human-readable status message
+        itemsAccepted:
+          type: integer
+          minimum: 0
+          description: Number of items accepted in this chunk
+        itemsRejected:
+          type: integer
+          minimum: 0
+          description: Number of items rejected in this chunk
+
+    JobStatusResponse:
+      type: object
+      required:
+        - jobId
+        - status
+        - createdAt
+        - jobSummary
+        - sequenceStatus
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          description: Action performed on this job
+        status:
+          type: string
+          enum: [AwaitingChunks, Pending, InProgress, Completed, Failed, Cancelled]
+          description: |
+            Job status. `AwaitingChunks` indicates that not all message sequence
+            chunks have been received yet.
+        createdAt:
+          type: string
+          format: date-time
+        lastUpdatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        sequenceStatus:
+          type: object
+          description: Tracks receipt of message sequence chunks for this job
+          required:
+            - totalSequences
+            - chunksReceived
+            - allChunksReceived
+          properties:
+            totalSequences:
+              type: integer
+              minimum: 1
+              description: Total expected chunks
+            chunksReceived:
+              type: integer
+              minimum: 0
+              description: Number of chunks received so far
+            missingSequenceNumbers:
+              type: array
+              items:
+                type: integer
+              description: List of sequence numbers not yet received (empty when all arrived)
+            allChunksReceived:
+              type: boolean
+              description: "`true` when all chunks have been received"
+        downloadZipLink:
+          type: string
+          format: uri
+          description: Temporary pre-signed link to download a zip file containing all requested files. Only present for Download jobs.
+        jobSummary:
+          $ref: '#/components/schemas/JobSummary'
+
+    PaginatedItemsResponse:
+      type: object
+      required:
+        - jobId
+        - items
+        - pagination
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemResult'
+        pagination:
+          type: object
+          required:
+            - totalItems
+            - limit
+            - offset
+            - hasMore
+          properties:
+            totalItems:
+              type: integer
+              minimum: 0
+              description: Total number of items matching the query (respects status filter)
+            limit:
+              type: integer
+              description: Page size used for this request
+            offset:
+              type: integer
+              description: Offset used for this request
+            hasMore:
+              type: boolean
+              description: "`true` when more pages are available beyond the current offset + limit"
+
+    ItemResult:
+      type: object
+      required:
+        - chartId
+        - status
+        - action
+      properties:
+        chartId:
+          type: string
+          description: Chart identifier
+        action:
+          type: string
+          description: The operation performed on this item
+        status:
+          type: string
+          enum: [Pending, InProgress, Success, Failed, Skipped]
+          description: Current status of the item
+        error:
+          $ref: '#/components/schemas/ErrorDetails'
+
+    ErrorDetails:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error details
+
+    JobSummary:
+      type: object
+      required:
+        - totalItems
+        - completedItems
+        - failedItems
+        - skippedItems
+        - isComplete
+      properties:
+        totalItems:
+          type: integer
+          minimum: 0
+          description: Total number of items in job
+        completedItems:
+          type: integer
+          minimum: 0
+          description: Number of completed items
+        failedItems:
+          type: integer
+          minimum: 0
+          description: Number of failed items
+        skippedItems:
+          type: integer
+          minimum: 0
+          description: Number of skipped items
+        isComplete:
+          type: boolean
+          description: Whether job is completely finished
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - timestamp
+      properties:
+        error:
+          type: string
+          description: Error type or code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+        traceId:
+          type: string
+          description: Trace ID for debugging
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.optum.com/oauth/token
+          scopes:
+            read: Read access to chart operations
+            write: Write access to chart operations
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+tags:
+  - name: Job Management
+    description: Operations for submitting and tracking chart jobs
+  - name: Item Results
+    description: Paginated per-item results for a job
+ 

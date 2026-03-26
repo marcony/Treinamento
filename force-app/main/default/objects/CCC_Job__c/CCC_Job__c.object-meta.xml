@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Objeto customizado para armazenar dados de jobs CCC.</description>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>false</enableHistory>
+    <enableLicensing>false</enableLicensing>
+    <enableReports>true</enableReports>
+    <enableSearch>true</enableSearch>
+    <label>CCC Job</label>
+    <nameField>
+        <displayFormat>JOB-{00000}</displayFormat>
+        <label>Job Number</label>
+        <type>AutoNumber</type>
+    </nameField>
+    <pluralLabel>CCC Jobs</pluralLabel>
+    <sharingModel>ReadWrite</sharingModel>
+</CustomObject>

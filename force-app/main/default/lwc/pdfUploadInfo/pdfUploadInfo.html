@@ -1,0 +1,39 @@
+<template>
+    <lightning-card title="Leitor de PDF">
+        <div class="slds-p-around_medium">
+            <div class="slds-form-element">
+                <label class="slds-form-element__label" for="pdf-folder-input">Selecionar pasta com PDFs</label>
+                <div class="slds-form-element__control">
+                    <input
+                        id="pdf-folder-input"
+                        class="slds-input"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        multiple
+                        webkitdirectory
+                        onchange={handleFileChange} />
+                </div>
+            </div>
+
+            <template if:true={hasFiles}>
+                <div class="slds-box slds-m-top_medium">
+                    <p><strong>Pasta:</strong> {folderName}</p>
+                    <p><strong>Total de PDFs:</strong> {totalFiles}</p>
+                    <p><strong>Total de páginas:</strong> {pageCountLabel}</p>
+                </div>
+
+                <div class="slds-box slds-m-top_medium">
+                    <template for:each={processedFiles} for:item="file">
+                        <div key={file.path} class="slds-m-bottom_small">
+                            <p><strong>Arquivo:</strong> {file.name}</p>
+                            <p><strong>Caminho:</strong> {file.path}</p>
+                            <p><strong>Tamanho:</strong> {file.sizeLabel}</p>
+                            <p><strong>Tipo:</strong> {file.type}</p>
+                            <p><strong>Quantidade de páginas:</strong> {file.pageCount}</p>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>
